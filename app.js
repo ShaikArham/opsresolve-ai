@@ -135,6 +135,7 @@ function route(){
  ['insights','knowledge','triage','about'].forEach(v=>$(v+'-view').hidden=v!==view);
  if(!['dashboard','tickets','insights','knowledge','triage','about'].includes(view)){location.hash='dashboard';return;}
  $('page-title').textContent={dashboard:'Support overview',tickets:'Incident queue',insights:'Recurring issues',knowledge:'Knowledge base',triage:'Triage lab',about:'About this demo'}[view];
+ document.title='OpsResolve AI | '+$('page-title').textContent;
  document.querySelectorAll('.nav a,.mobile-nav a').forEach(a=>{const on=a.hash==='#'+view;a.classList.toggle('active',on);if(on)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
 }
 async function init(){
@@ -190,6 +191,18 @@ function addStoryStyles(){
  const style=document.createElement('style');style.textContent=`
  .project-story{margin-top:30px;padding-top:26px;border-top:1px solid var(--line)}.story-heading{max-width:760px}.story-heading h2{font-size:24px;margin:4px 0 8px}.story-heading p{color:var(--muted);margin:0}.story-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:20px 0}.story-grid article{padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--card)}.story-grid article>span{display:inline-grid;place-items:center;width:27px;height:27px;border-radius:8px;background:var(--soft-blue);color:var(--blue);font-size:12px;font-weight:800}.story-grid h3{font-size:15px;margin:12px 0 5px}.story-grid p{font-size:13px;line-height:1.5;color:var(--muted);margin:0}.architecture-card{padding:20px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,var(--card),var(--soft-blue));margin:20px 0}.architecture-card h2{font-size:19px;margin:4px 0 16px}.architecture-flow{display:flex;align-items:stretch;gap:8px}.architecture-flow>div{flex:1;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}.architecture-flow b,.architecture-flow span,.architecture-flow small{display:block}.architecture-flow b{color:var(--blue);font-size:13px}.architecture-flow span{font-weight:800;font-size:13px;margin-top:5px}.architecture-flow small{font-size:11px;color:var(--muted);margin-top:4px}.architecture-flow>i{align-self:center;font-style:normal;color:var(--blue);font-size:19px}.case-guardrails{display:grid;grid-template-columns:1fr 1fr;gap:18px}.case-guardrails>div{padding:16px;border-left:3px solid var(--teal);background:var(--soft-teal);border-radius:0 10px 10px 0}.case-guardrails>div+div{border-color:var(--amber);background:#fff7e7}.case-guardrails h3{margin:0 0 8px;font-size:15px}.case-guardrails ul{margin:0;padding-left:18px}.case-guardrails li{padding:3px 0;font-size:13px;color:var(--muted)}@media(max-width:800px){.story-grid{grid-template-columns:1fr}.architecture-flow{display:grid;grid-template-columns:1fr 1fr}.architecture-flow>i{display:none}.case-guardrails{grid-template-columns:1fr}}@media(max-width:500px){.architecture-flow{grid-template-columns:1fr}}html[data-theme="dark"] .architecture-card{background:linear-gradient(135deg,#112840,#15375f)}html[data-theme="dark"] .story-grid article,html[data-theme="dark"] .architecture-flow>div{background:#10253c}html[data-theme="dark"] .case-guardrails>div+div{background:#4b3519}`;document.head.appendChild(style);
 }
+function addPolishStyles(){
+ const style=document.createElement('style');style.textContent=`
+ .skip-link{position:fixed;left:14px;top:-50px;z-index:20;padding:10px 13px;border-radius:8px;background:var(--navy);color:#fff;font-weight:800;text-decoration:none;transition:top .18s ease}.skip-link:focus{top:14px}.back-to-top{position:fixed;right:18px;bottom:18px;z-index:8;width:42px;height:42px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--ink);box-shadow:var(--shadow);opacity:0;pointer-events:none;transform:translateY(8px);transition:opacity .18s ease,transform .18s ease}.back-to-top.visible{opacity:1;pointer-events:auto;transform:translateY(0)}@media(max-width:900px){.mobile-nav{position:sticky;top:0;z-index:6;flex-wrap:nowrap;overflow-x:auto;padding:8px 0;background:var(--paper);scrollbar-width:none}.mobile-nav::-webkit-scrollbar{display:none}.mobile-nav a{white-space:nowrap}.stats{gap:10px}.card{padding:17px}.table-wrap{margin:0 -4px}.trend-bars{min-width:330px}.back-to-top{right:12px;bottom:12px}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}`;
+ document.head.appendChild(style);
+}
+function setupAccessibility(){
+ const main=document.querySelector('main');main.id='main-content';main.setAttribute('tabindex','-1');
+ const skip=document.createElement('a');skip.className='skip-link';skip.href='#main-content';skip.textContent='Skip to workspace';document.body.prepend(skip);
+ const back=document.createElement('button');back.className='back-to-top';back.type='button';back.setAttribute('aria-label','Back to top');back.title='Back to top';back.textContent='↑';document.body.appendChild(back);
+ const update=()=>back.classList.toggle('visible',window.scrollY>500);window.addEventListener('scroll',update,{passive:true});update();
+ back.onclick=()=>window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+}
 function setupTheme(){
  const root=document.documentElement,top=document.querySelector('.top'),title=$('page-title'),pill=top.querySelector('.pill');
  const eyebrow=document.createElement('span');eyebrow.className='eyebrow';eyebrow.textContent='Operations intelligence workspace';title.before(eyebrow);
@@ -200,7 +213,7 @@ function setupTheme(){
  toggle.onclick=()=>apply(root.dataset.theme==='dark'?'light':'dark');
  pill.before(actions);actions.append(toggle,pill);
 }
-addDashboardStyles();addAnalyticsStyles();addQueueStyles();addInvestigationStyles();addKnowledgeStyles();addTriageStyles();addStoryStyles();setupTheme();window.addEventListener('hashchange',route);init();
+addDashboardStyles();addAnalyticsStyles();addQueueStyles();addInvestigationStyles();addKnowledgeStyles();addTriageStyles();addStoryStyles();addPolishStyles();setupAccessibility();setupTheme();window.addEventListener('hashchange',route);init();
 
 function renderAnalysis(target,a,key,q){
  const accepted=a.action==='recommend',status=reviews.get(key)||a.review_status;
