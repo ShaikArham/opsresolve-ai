@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date = s => s ? new Date(s).toLocaleString('en-IE',{timeZone:'UTC',dateStyle:'medium',timeStyle:'short'})+' UTC' : 'Not recorded';
 const tag = (text,cls) => '<span class="tag '+cls+'">'+esc(text)+'</span>';
-let data, model, evaluation, page=0, selected=null, patternIds=null, queueMode='';
+let data, model, evaluation, page=0, selected=null, patternIds=null, queueMode='', patternGroups=[];
 const analyses=new Map(),reviews=new Map();
 const PAGE_SIZE=10;
 const active = t => !['Resolved','Closed'].includes(t.status);
@@ -92,10 +92,20 @@ function insights(){
   const name=systems[t.system_id].name.toLowerCase();if(symptom.endsWith(' in '+name))symptom=symptom.slice(0,-(' in '+name).length);
   const key=t.system_id+'|'+symptom;if(!groups.has(key))groups.set(key,{symptom,system:t.system_id,rows:[]});groups.get(key).rows.push(t);
  }
- const ranked=[...groups.values()].filter(g=>g.rows.length>=3).sort((a,b)=>b.rows.length-a.rows.length).slice(0,8);
- $('patterns').innerHTML=ranked.map((g,i)=>'<div class="pattern"><b>'+esc(g.symptom)+'</b><p>'+esc(systems[g.system].name)+' · '+g.rows.length+' incidents · '+g.rows.filter(active).length+' active</p><button class="button" data-group="'+i+'">View incidents</button></div>').join('');
+ const ranked=[...groups.values()].filter(g=>g.rows.length>=3).sort((a,b)=>b.rows.length-a.rows.length).slice(0,8);patternGroups=ranked;
+ $('patterns').innerHTML=ranked.map((g,i)=>'<div class="pattern"><b>'+esc(g.symptom)+'</b><p>'+esc(systems[g.system].name)+' · '+g.rows.length+' incidents · '+g.rows.filter(active).length+' active</p><div class="pattern-actions"><button class="button" data-investigate="'+i+'">Investigate</button><button class="action" data-group="'+i+'">View incidents</button></div></div>').join('');
  $('patterns').querySelectorAll('[data-group]').forEach(b=>b.onclick=()=>{reset();patternIds=new Set(ranked[Number(b.dataset.group)].rows.map(t=>t.ticket_id));location.hash='tickets';route();draw();});
+ $('patterns').querySelectorAll('[data-investigate]').forEach(b=>b.onclick=()=>renderPatternInvestigation(ranked[Number(b.dataset.investigate)]));
  renderAnalytics();
+}
+function renderPatternInvestigation(group){
+ let host=$('pattern-workbench');if(!host){host=document.createElement('section');host.id='pattern-workbench';host.className='pattern-workbench';$('patterns').closest('.card').after(host);}
+ const rows=group.rows,activeRows=rows.filter(active),affected=rows.reduce((n,t)=>n+t.affected_users,0),breached=rows.filter(t=>t.sla_breached).length;
+ const articleId=rows.map(t=>t.kb_article_id).find(Boolean),article=articleId?articles[articleId]:null;
+ const highest=[...rows].sort((a,b)=>b.sla_consumption_percent-a.sla_consumption_percent)[0];
+ host.innerHTML='<div class="card investigation-card"><div class="investigation-head"><div><span class="section-kicker">Investigation brief</span><h2>'+esc(group.symptom)+'</h2><p>'+esc(systems[group.system].name)+' · Pattern-based review signal, not a confirmed shared root cause.</p></div><button class="action" id="close-investigation">Close</button></div><div class="investigation-metrics"><div><b>'+rows.length+'</b><span>linked incidents</span></div><div><b>'+activeRows.length+'</b><span>active now</span></div><div><b>'+affected+'</b><span>reported users affected</span></div><div><b>'+breached+'</b><span>recorded SLA breaches</span></div></div><div class="investigation-body"><div><h3>Where to start</h3><p>Review the highest-exposure incident, then compare timestamps, exact symptoms and recent changes before treating these reports as one root cause.</p><button class="button" id="open-pattern-ticket">Open '+esc(highest.ticket_id)+'</button></div><div><h3>Relevant procedure</h3>'+(article?'<p><button class="action" id="open-pattern-kb">'+esc(article.article_id)+' · '+esc(article.title)+'</button></p><p class="muted">Use the published diagnostic steps to structure the review.</p>':'<p class="muted">No linked procedure is recorded for this pattern.</p>')+'</div></div></div>';
+ $('close-investigation').onclick=()=>host.remove();$('open-pattern-ticket').onclick=()=>{location.hash='tickets';route();showTicket(highest.ticket_id);};if(article)$('open-pattern-kb').onclick=()=>{location.hash='knowledge';route();showArticle(article.article_id);};
+ host.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
 }
 function renderAnalytics(){
  let extra=$('analytics-extra');
@@ -160,6 +170,10 @@ function addQueueStyles(){
  const style=document.createElement('style');style.textContent=`
  .quick-views{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:15px 0 10px}.quick-views>span{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-right:3px}.quick-views button{border:1px solid var(--line);border-radius:99px;padding:7px 10px;background:var(--card);color:var(--ink);font-size:12px;font-weight:700}.quick-views button:hover,.quick-views button.active{background:var(--soft-teal);border-color:#9fdfcb;color:#126f57}.queue-summary{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:-2px 0 13px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--soft-blue);font-size:13px;color:var(--muted)}.queue-summary b{color:var(--ink)}.detail-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.detail-top h2{margin:0}.detail-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.detail .section-kicker{margin-bottom:5px}@media(max-width:650px){.quick-views{align-items:flex-start}.quick-views>span{width:100%}.queue-summary{align-items:flex-start;flex-direction:column}.detail-top{flex-direction:column}.detail-badges{justify-content:flex-start}}html[data-theme="dark"] .quick-views button{background:#10253c;color:var(--ink)}html[data-theme="dark"] .queue-summary{background:#15375f}`;document.head.appendChild(style);
 }
+function addInvestigationStyles(){
+ const style=document.createElement('style');style.textContent=`
+ .pattern-actions{display:flex;gap:10px;align-items:center;margin-top:8px}.pattern-workbench{margin:18px 0}.investigation-card{border-top:3px solid var(--blue)}.investigation-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.investigation-head h2{margin:3px 0;font-size:20px}.investigation-head p{margin:0;color:var(--muted);font-size:13px}.investigation-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.investigation-metrics>div{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--card)}.investigation-metrics b,.investigation-metrics span{display:block}.investigation-metrics b{font-size:24px;color:var(--blue)}.investigation-metrics span{margin-top:4px;font-size:12px;color:var(--muted)}.investigation-body{display:grid;grid-template-columns:1fr 1fr;gap:18px;border-top:1px solid var(--line);padding-top:16px}.investigation-body h3{font-size:14px;margin:0 0 7px}.investigation-body p{font-size:13px;margin:0 0 10px}@media(max-width:650px){.investigation-metrics{grid-template-columns:1fr 1fr}.investigation-body{grid-template-columns:1fr}.investigation-head{flex-direction:column}}html[data-theme="dark"] .investigation-metrics>div{background:#10253c}`;document.head.appendChild(style);
+}
 function setupTheme(){
  const root=document.documentElement,top=document.querySelector('.top'),title=$('page-title'),pill=top.querySelector('.pill');
  const eyebrow=document.createElement('span');eyebrow.className='eyebrow';eyebrow.textContent='Operations intelligence workspace';title.before(eyebrow);
@@ -170,7 +184,7 @@ function setupTheme(){
  toggle.onclick=()=>apply(root.dataset.theme==='dark'?'light':'dark');
  pill.before(actions);actions.append(toggle,pill);
 }
-addDashboardStyles();addAnalyticsStyles();addQueueStyles();setupTheme();window.addEventListener('hashchange',route);init();
+addDashboardStyles();addAnalyticsStyles();addQueueStyles();addInvestigationStyles();setupTheme();window.addEventListener('hashchange',route);init();
 
 function renderAnalysis(target,a,key,q){
  const accepted=a.action==='recommend',status=reviews.get(key)||a.review_status;
