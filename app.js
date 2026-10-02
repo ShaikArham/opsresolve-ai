@@ -104,7 +104,17 @@ async function init(){
   draw();drawKnowledge();insights();route();$('loading').hidden=true;$('workspace').hidden=false;
  }catch(e){$('loading').hidden=true;$('error').hidden=false;$('error').textContent='The support dataset could not be loaded. Reload the page to try again.';}
 }
-window.addEventListener('hashchange',route);init();
+function setupTheme(){
+ const root=document.documentElement,top=document.querySelector('.top'),title=$('page-title'),pill=top.querySelector('.pill');
+ const eyebrow=document.createElement('span');eyebrow.className='eyebrow';eyebrow.textContent='Operations intelligence workspace';title.before(eyebrow);
+ const actions=document.createElement('div');actions.className='header-actions';
+ const toggle=document.createElement('button');toggle.className='theme-toggle';toggle.type='button';toggle.id='theme-toggle';
+ const apply=theme=>{root.dataset.theme=theme;toggle.textContent=theme==='dark'?'☀':'◐';toggle.setAttribute('aria-label','Switch to '+(theme==='dark'?'light':'dark')+' mode');try{localStorage.setItem('opsresolve-theme',theme);}catch(_){}};
+ let saved='';try{saved=localStorage.getItem('opsresolve-theme')||'';}catch(_){}apply(saved||'light');
+ toggle.onclick=()=>apply(root.dataset.theme==='dark'?'light':'dark');
+ pill.before(actions);actions.append(toggle,pill);
+}
+setupTheme();window.addEventListener('hashchange',route);init();
 
 function renderAnalysis(target,a,key,q){
  const accepted=a.action==='recommend',status=reviews.get(key)||a.review_status;

@@ -10,7 +10,7 @@ Explore the project here: [shaikarham.github.io/opsresolve-ai](https://shaikarha
 
 ## Run locally
 
-Open this repository with a local static web server. The site loads JSON files from the `data` folder, so opening `index.html` directly from a file browser may not load all features in some browsers.
+Open this repository with a local static web server. The site loads JSON files from the data folder, so opening index.html directly from a file browser may not load all features in some browsers.
 
 ## Project scope
 
