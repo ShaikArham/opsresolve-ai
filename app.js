@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date = s => s ? new Date(s).toLocaleString('en-IE',{timeZone:'UTC',dateStyle:'medium',timeStyle:'short'})+' UTC' : 'Not recorded';
 const tag = (text,cls) => '<span class="tag '+cls+'">'+esc(text)+'</span>';
-let data, model, evaluation, page=0, selected=null, patternIds=null, queueMode='', patternGroups=[];
+let data, model, evaluation, page=0, selected=null, patternIds=null, queueMode='', patternGroups=[], scopeLabel='';
 const analyses=new Map(),reviews=new Map();
 const PAGE_SIZE=10;
 const active = t => !['Resolved','Closed'].includes(t.status);
@@ -27,7 +27,7 @@ function draw(){
  const rows=filtered();page=Math.min(page,Math.max(0,Math.ceil(rows.length/PAGE_SIZE)-1));
  const slice=rows.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
  $('rows').innerHTML=slice.map(t=>'<tr class="'+(selected===t.ticket_id?'selected':'')+'"><td><div class="ticket">'+esc(t.ticket_id)+'</div><div>'+esc(t.title.split(' · ')[0])+'</div><small class="muted">'+esc(systems[t.system_id].name)+' · '+esc(t.category)+'</small></td><td>'+tag(t.priority,['P1','P2'].includes(t.priority)?'high':t.priority==='P3'?'medium':'low')+'</td><td>'+esc(t.status)+'</td><td>'+tag(t.sla_status,t.sla_status.toLowerCase().replaceAll(' ',''))+'<div>'+t.sla_consumption_percent+'% consumed</div><div class="bar"><i style="width:'+Math.min(100,t.sla_consumption_percent)+'%;background:'+(t.sla_breached?'var(--red)':t.sla_status==='At Risk'?'var(--amber)':'var(--teal)')+'"></i></div></td><td>'+esc(agents[t.assigned_agent_id].name)+'</td><td><button class="action" data-ticket="'+esc(t.ticket_id)+'" aria-label="View '+esc(t.ticket_id)+'">View</button></td></tr>').join('')||'<tr><td colspan="6">No incidents match these filters.</td></tr>';
- $('results').textContent=rows.length?(page*PAGE_SIZE+1)+'–'+Math.min(rows.length,(page+1)*PAGE_SIZE)+' of '+rows.length+' incidents'+(patternIds?' · Repeated symptom group':''):'0 incidents';
+ $('results').textContent=rows.length?(page*PAGE_SIZE+1)+'–'+Math.min(rows.length,(page+1)*PAGE_SIZE)+' of '+rows.length+' incidents'+(patternIds?' · '+scopeLabel:''):'0 incidents';
  const summary=$('queue-summary');if(summary){const labels={active:'Active queue',critical:'P1 / P2 priority',risk:'At-risk or breached SLA'};summary.innerHTML='<span><b>'+rows.length+'</b> incidents shown'+(queueMode?' · '+esc(labels[queueMode]):'')+'</span>'+(queueMode||$('search').value||$('status').value||$('category').value||$('priority').value||$('sla').value?'<button class="action" id="clear-queue-view">Clear view</button>':'');const clear=$('clear-queue-view');if(clear)clear.onclick=reset;}
  $('prev').disabled=page===0;$('next').disabled=(page+1)*PAGE_SIZE>=rows.length;
  $('rows').querySelectorAll('[data-ticket]').forEach(b=>b.onclick=()=>showTicket(b.dataset.ticket));
@@ -52,13 +52,15 @@ function drawKnowledge(){
  const q=$('kb-search').value.trim().toLowerCase(),cat=$('kb-category').value;
  const rows=data.knowledge_articles.filter(a=>(!cat||a.category===cat)&&(!q||[a.article_id,a.title,...a.symptoms,...a.keywords].join(' ').toLowerCase().includes(q)));
  $('kb-count').textContent=rows.length+' of 26 articles';
- $('kb-list').innerHTML=rows.map(a=>'<button class="kb-item" data-article="'+esc(a.article_id)+'"><small>'+esc(a.article_id)+' · '+esc(a.category)+'</small><strong>'+esc(a.title)+'</strong><p>'+esc(a.symptoms[0])+'</p></button>').join('')||'<p>No articles match this search.</p>';
+ $('kb-list').innerHTML=rows.map(a=>{const linked=data.tickets.filter(t=>t.kb_article_id===a.article_id),open=linked.filter(active).length;return '<button class="kb-item" data-article="'+esc(a.article_id)+'"><small>'+esc(a.article_id)+' · '+esc(a.category)+'</small><strong>'+esc(a.title)+'</strong><p>'+esc(a.symptoms[0])+'</p><span class="kb-evidence">'+linked.length+' linked incidents · '+open+' active</span></button>';}).join('')||'<p>No articles match this search.</p>';
  $('kb-list').querySelectorAll('[data-article]').forEach(b=>b.onclick=()=>showArticle(b.dataset.article));
 }
 function showArticle(id){
  const a=articles[id];if(!a)return;
- $('kb-detail').innerHTML='<h2>'+esc(a.article_id)+'</h2><h3>'+esc(a.title)+'</h3><p class="muted">'+esc(a.category)+' · '+esc(a.status)+' · v'+esc(a.version)+'</p><p><b>Systems:</b> '+a.system_ids.map(i=>esc(systems[i].name)).join(', ')+'</p>'+list('Symptoms',a.symptoms)+list('Possible causes',a.possible_causes)+list('Diagnostic steps',a.diagnostic_steps,true)+list('Resolution steps',a.resolution_steps,true)+list('Escalate when',a.escalation_conditions)+list('Evidence required',a.evidence_required)+'<h3>Related articles</h3>'+a.related_articles.map(i=>'<p><button class="action" data-related="'+esc(i)+'">'+esc(i)+' · '+esc(articles[i]?.title)+'</button></p>').join('')+'<p class="footer">Fictional procedure · Updated '+esc(date(a.updated_at))+'</p>';
+ const linked=data.tickets.filter(t=>t.kb_article_id===a.article_id),open=linked.filter(active).length,breached=linked.filter(t=>t.sla_breached).length;
+ $('kb-detail').innerHTML='<span class="section-kicker">Knowledge procedure</span><h2>'+esc(a.article_id)+'</h2><h3>'+esc(a.title)+'</h3><p class="muted">'+esc(a.category)+' · '+esc(a.status)+' · v'+esc(a.version)+'</p><div class="kb-insight"><div><b>'+linked.length+'</b><span>linked incidents</span></div><div><b>'+open+'</b><span>active now</span></div><div><b>'+breached+'</b><span>SLA breaches</span></div></div><button class="button" id="open-article-incidents">View linked incidents</button><p><b>Systems:</b> '+a.system_ids.map(i=>esc(systems[i].name)).join(', ')+'</p>'+list('Symptoms',a.symptoms)+list('Possible causes',a.possible_causes)+list('Diagnostic steps',a.diagnostic_steps,true)+list('Resolution steps',a.resolution_steps,true)+list('Escalate when',a.escalation_conditions)+list('Evidence required',a.evidence_required)+'<h3>Related articles</h3>'+a.related_articles.map(i=>'<p><button class="action" data-related="'+esc(i)+'">'+esc(i)+' · '+esc(articles[i]?.title)+'</button></p>').join('')+'<p class="footer">Fictional procedure · Updated '+esc(date(a.updated_at))+'</p>';
  $('kb-detail').querySelectorAll('[data-related]').forEach(b=>b.onclick=()=>showArticle(b.dataset.related));
+ $('open-article-incidents').onclick=()=>{patternIds=new Set(linked.map(t=>t.ticket_id));scopeLabel='Linked to '+a.article_id;location.hash='tickets';route();draw();};
  $('kb-detail').focus({preventScroll:true});if(innerWidth<1100)$('kb-detail').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
 }
 function count(rows,key){return rows.reduce((m,x)=>(m[x[key]]=(m[x[key]]||0)+1,m),{});}
@@ -94,7 +96,7 @@ function insights(){
  }
  const ranked=[...groups.values()].filter(g=>g.rows.length>=3).sort((a,b)=>b.rows.length-a.rows.length).slice(0,8);patternGroups=ranked;
  $('patterns').innerHTML=ranked.map((g,i)=>'<div class="pattern"><b>'+esc(g.symptom)+'</b><p>'+esc(systems[g.system].name)+' · '+g.rows.length+' incidents · '+g.rows.filter(active).length+' active</p><div class="pattern-actions"><button class="button" data-investigate="'+i+'">Investigate</button><button class="action" data-group="'+i+'">View incidents</button></div></div>').join('');
- $('patterns').querySelectorAll('[data-group]').forEach(b=>b.onclick=()=>{reset();patternIds=new Set(ranked[Number(b.dataset.group)].rows.map(t=>t.ticket_id));location.hash='tickets';route();draw();});
+ $('patterns').querySelectorAll('[data-group]').forEach(b=>b.onclick=()=>{reset();patternIds=new Set(ranked[Number(b.dataset.group)].rows.map(t=>t.ticket_id));scopeLabel='Repeated symptom group';location.hash='tickets';route();draw();});
  $('patterns').querySelectorAll('[data-investigate]').forEach(b=>b.onclick=()=>renderPatternInvestigation(ranked[Number(b.dataset.investigate)]));
  renderAnalytics();
 }
@@ -126,7 +128,7 @@ function setupQueueEnhancements(){
  const summary=document.createElement('div');summary.className='queue-summary';summary.id='queue-summary';filters.after(summary);
  quick.querySelectorAll('[data-queue-mode]').forEach(b=>b.onclick=()=>{queueMode=b.dataset.queueMode;patternIds=null;page=0;quick.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));draw();});
 }
-function reset(){patternIds=null;queueMode='';['search','status','category','priority','sla'].forEach(id=>$(id).value='');$('sort').value='created';page=0;draw();}
+function reset(){patternIds=null;scopeLabel='';queueMode='';['search','status','category','priority','sla'].forEach(id=>$(id).value='');$('sort').value='created';page=0;draw();}
 function route(){
  if(!data)return;const view=location.hash.slice(1)||'dashboard';const queue=['dashboard','tickets'].includes(view);
  $('queue-view').hidden=!queue;$('stats').hidden=view!=='dashboard';$('overview-insights').hidden=view!=='dashboard';
@@ -174,6 +176,10 @@ function addInvestigationStyles(){
  const style=document.createElement('style');style.textContent=`
  .pattern-actions{display:flex;gap:10px;align-items:center;margin-top:8px}.pattern-workbench{margin:18px 0}.investigation-card{border-top:3px solid var(--blue)}.investigation-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.investigation-head h2{margin:3px 0;font-size:20px}.investigation-head p{margin:0;color:var(--muted);font-size:13px}.investigation-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.investigation-metrics>div{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--card)}.investigation-metrics b,.investigation-metrics span{display:block}.investigation-metrics b{font-size:24px;color:var(--blue)}.investigation-metrics span{margin-top:4px;font-size:12px;color:var(--muted)}.investigation-body{display:grid;grid-template-columns:1fr 1fr;gap:18px;border-top:1px solid var(--line);padding-top:16px}.investigation-body h3{font-size:14px;margin:0 0 7px}.investigation-body p{font-size:13px;margin:0 0 10px}@media(max-width:650px){.investigation-metrics{grid-template-columns:1fr 1fr}.investigation-body{grid-template-columns:1fr}.investigation-head{flex-direction:column}}html[data-theme="dark"] .investigation-metrics>div{background:#10253c}`;document.head.appendChild(style);
 }
+function addKnowledgeStyles(){
+ const style=document.createElement('style');style.textContent=`
+ .kb-item{position:relative;min-height:166px}.kb-evidence{display:block;margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;font-weight:700;color:var(--blue)}.kb-insight{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}.kb-insight>div{padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--soft-blue)}.kb-insight b,.kb-insight span{display:block}.kb-insight b{font-size:21px;color:var(--blue)}.kb-insight span{font-size:11px;color:var(--muted);margin-top:3px}@media(max-width:650px){.kb-insight{grid-template-columns:1fr 1fr}}html[data-theme="dark"] .kb-insight>div{background:#15375f}`;document.head.appendChild(style);
+}
 function setupTheme(){
  const root=document.documentElement,top=document.querySelector('.top'),title=$('page-title'),pill=top.querySelector('.pill');
  const eyebrow=document.createElement('span');eyebrow.className='eyebrow';eyebrow.textContent='Operations intelligence workspace';title.before(eyebrow);
@@ -184,7 +190,7 @@ function setupTheme(){
  toggle.onclick=()=>apply(root.dataset.theme==='dark'?'light':'dark');
  pill.before(actions);actions.append(toggle,pill);
 }
-addDashboardStyles();addAnalyticsStyles();addQueueStyles();addInvestigationStyles();setupTheme();window.addEventListener('hashchange',route);init();
+addDashboardStyles();addAnalyticsStyles();addQueueStyles();addInvestigationStyles();addKnowledgeStyles();setupTheme();window.addEventListener('hashchange',route);init();
 
 function renderAnalysis(target,a,key,q){
  const accepted=a.action==='recommend',status=reviews.get(key)||a.review_status;
