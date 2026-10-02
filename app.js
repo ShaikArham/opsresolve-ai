@@ -156,6 +156,7 @@ async function init(){
   $('kb-search').oninput=drawKnowledge;$('kb-category').onchange=drawKnowledge;
   for(const s of data.systems){const o=document.createElement('option');o.value=s.system_id;o.textContent=s.name;$('triage-system').appendChild(o);}
   $('triage-form').onsubmit=e=>{e.preventDefault();const description=$('triage-description').value.trim();if(description.length<15)return;const q={description,system_id:$('triage-system').value||null,impact:$('triage-impact').value,urgency:$('triage-urgency').value,created_at:data.snapshot_at};reviews.delete('new-report');renderAnalysis('triage-result',OpsEngine.analyze(q,data,model),'new-report',q);$('triage-result').focus({preventScroll:true});if(innerWidth<1100)$('triage-result').scrollIntoView({block:'start'});};
+  setupTriageGuidance();
   renderModelResults();
   draw();drawKnowledge();insights();route();$('loading').hidden=true;$('workspace').hidden=false;
  }catch(e){$('loading').hidden=true;$('error').hidden=false;$('error').textContent='The support dataset could not be loaded. Reload the page to try again.';}
@@ -180,6 +181,10 @@ function addKnowledgeStyles(){
  const style=document.createElement('style');style.textContent=`
  .kb-item{position:relative;min-height:166px}.kb-evidence{display:block;margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;font-weight:700;color:var(--blue)}.kb-insight{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}.kb-insight>div{padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--soft-blue)}.kb-insight b,.kb-insight span{display:block}.kb-insight b{font-size:21px;color:var(--blue)}.kb-insight span{font-size:11px;color:var(--muted);margin-top:3px}@media(max-width:650px){.kb-insight{grid-template-columns:1fr 1fr}}html[data-theme="dark"] .kb-insight>div{background:#15375f}`;document.head.appendChild(style);
 }
+function addTriageStyles(){
+ const style=document.createElement('style');style.textContent=`
+ .triage-guidance{display:grid;gap:9px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}.triage-guidance>div{display:grid;grid-template-columns:25px 1fr;gap:9px;align-items:start}.triage-guidance>div>span{display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--soft-blue);color:var(--blue);font-weight:800;font-size:12px}.triage-guidance p{margin:2px 0;font-size:13px;color:var(--muted)}.triage-guidance b{color:var(--ink)}.analysis-safety{display:flex;justify-content:space-between;gap:16px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--soft-blue);margin-top:18px}.analysis-safety b{display:block;font-size:16px}.analysis-safety p{margin:4px 0 0;font-size:12px;color:var(--muted);max-width:350px}.analysis-inputs{display:flex;flex-wrap:wrap;justify-content:flex-end;align-content:flex-start;gap:6px;max-width:260px}.analysis-inputs span{border:1px solid var(--line);border-radius:99px;padding:5px 7px;background:var(--card);font-size:11px;font-weight:700;color:var(--muted)}.analysis-inputs span:first-child{color:var(--blue)}.review-record{padding:9px 11px;border-left:3px solid var(--teal);background:var(--soft-teal);font-size:13px}@media(max-width:650px){.analysis-safety{flex-direction:column}.analysis-inputs{justify-content:flex-start;max-width:none}}html[data-theme="dark"] .analysis-safety{background:#15375f}html[data-theme="dark"] .analysis-inputs span{background:#10253c}`;document.head.appendChild(style);
+}
 function setupTheme(){
  const root=document.documentElement,top=document.querySelector('.top'),title=$('page-title'),pill=top.querySelector('.pill');
  const eyebrow=document.createElement('span');eyebrow.className='eyebrow';eyebrow.textContent='Operations intelligence workspace';title.before(eyebrow);
@@ -190,13 +195,17 @@ function setupTheme(){
  toggle.onclick=()=>apply(root.dataset.theme==='dark'?'light':'dark');
  pill.before(actions);actions.append(toggle,pill);
 }
-addDashboardStyles();addAnalyticsStyles();addQueueStyles();addInvestigationStyles();addKnowledgeStyles();setupTheme();window.addEventListener('hashchange',route);init();
+addDashboardStyles();addAnalyticsStyles();addQueueStyles();addInvestigationStyles();addKnowledgeStyles();addTriageStyles();setupTheme();window.addEventListener('hashchange',route);init();
 
 function renderAnalysis(target,a,key,q){
  const accepted=a.action==='recommend',status=reviews.get(key)||a.review_status;
  const recommendation=a.recommended_kb?articles[a.recommended_kb]:null;
  const training=q.ticket_id?model.training_ids.includes(q.ticket_id):false;
- $(target).innerHTML='<div class="callout '+(a.critical_review?'critical':accepted?'':'warning')+'"><b>'+esc(a.critical_review?'Critical impact: escalate for human review':accepted?'Suggested triage':a.action==='out_of_scope'?'Outside current support scope':'More evidence needed')+'</b><p>'+esc(a.reason||'Validate the procedure against the actual error before applying any change.')+'</p></div>'+
+ const topSop=a.sop_candidates[0]?.score||0;
+ const alignment=a.action==='out_of_scope'?'Out of scope':topSop>=.6&&a.category_score>=.7?'Strong evidence alignment':topSop>=.3?'Partial evidence alignment':'Limited evidence alignment';
+ const alignmentNote=a.action==='out_of_scope'?'The report does not match the current fictional support scope.':topSop>=.6?'Category and procedure evidence point in a similar direction. Validate before acting.':'The text has limited or mixed procedure evidence. Gather more details before a change.';
+ $(target).innerHTML='<section class="analysis-safety"><div><span class="section-kicker">AI recommendation review</span><b>'+esc(alignment)+'</b><p>'+esc(alignmentNote)+'</p></div><div class="analysis-inputs"><span>Description</span><span>'+esc(q.system_id?systems[q.system_id]?.name||'Selected system':'System not specified')+'</span><span>'+esc(q.impact||'Impact not supplied')+' impact</span><span>'+esc(q.urgency||'Urgency not supplied')+' urgency</span></div></section>'+
+ '<div class="callout '+(a.critical_review?'critical':accepted?'':'warning')+'"><b>'+esc(a.critical_review?'Critical impact: escalate for human review':accepted?'Suggested triage':a.action==='out_of_scope'?'Outside current support scope':'More evidence needed')+'</b><p>'+esc(a.reason||'Validate the procedure against the actual error before applying any change.')+'</p></div>'+
  '<div class="kv">'+kv('Category',a.predicted_category||'Unconfirmed')+kv('Suggested priority',a.suggested_priority||'Confirm impact / urgency')+kv('Priority basis','Impact × urgency rule')+kv('Human review',status)+'</div>'+
  '<p class="footer">'+(q.ticket_id?(training?'This incident was in the training sample.':'Held-out September case.'):'New report analyzed against the historical demo.')+' Analysis is a retrospective demonstration using the current model.</p>'+
  (a.likely_cause?'<h3>Historical hypothesis</h3><p>'+esc(a.likely_cause.text)+'</p><p class="footer">Supported by '+a.likely_cause.ticket_ids.map(esc).join(', ')+'. This is not a confirmed cause for the current report.</p>':a.possible_causes.length?list('Possible causes from matched SOP',a.possible_causes):'<p>No root-cause hypothesis is supported by the current evidence.</p>')+
@@ -205,10 +214,15 @@ function renderAnalysis(target,a,key,q){
  '<h3>Procedure evidence</h3>'+a.sop_candidates.map(s=>'<div class="evidence"><button class="action" data-analysis-kb="'+esc(s.article_id)+'">'+esc(s.article_id)+' · '+esc(articles[s.article_id].title)+'</button><p class="footer">Text similarity '+s.score.toFixed(2)+(recommendation?.article_id===s.article_id?' · Suggested procedure':' · Candidate only')+'</p></div>').join('')+
  '<h3>Similar resolved incidents</h3>'+(a.similar_tickets.length?a.similar_tickets.map(h=>'<div class="evidence"><button class="action" data-analysis-ticket="'+esc(h.ticket_id)+'">'+esc(h.ticket_id)+'</button><p>'+esc(h.root_cause)+'</p><p class="footer">Resolved '+esc(date(h.resolved_at))+' · Similarity '+h.score.toFixed(2)+'</p></div>').join(''):'<p>No sufficiently similar training incident was resolved before this report.</p>')+
  '<p class="footer">Classifier score '+a.category_score.toFixed(2)+'. Scores measure model preference or text similarity. They are not calibrated confidence.</p>'+
- '<div class="review-actions">'+(accepted?'<button class="button" data-review="Reviewed: accepted">Accept suggestion</button>':'')+'<button class="button" data-review="Reviewed: more evidence requested">Request evidence</button><button class="button" data-review="Reviewed: rejected">Reject suggestion</button></div><p role="status" id="'+target+'-review">'+esc(status)+'</p><p class="footer">Review decisions last for this page session. Ticket priority, ownership and resolution remain unchanged.</p>';
+ '<div class="review-actions">'+(accepted?'<button class="button" data-review="Reviewed: accepted">Accept suggestion</button>':'')+'<button class="button" data-review="Reviewed: more evidence requested">Request evidence</button><button class="button" data-review="Reviewed: rejected">Reject suggestion</button></div><p role="status" class="review-record" id="'+target+'-review">Decision record: '+esc(status)+'</p><p class="footer">Review decisions last for this page session. Ticket priority, ownership and resolution remain unchanged.</p>';
  $(target).querySelectorAll('[data-analysis-kb]').forEach(b=>b.onclick=()=>{location.hash='knowledge';route();showArticle(b.dataset.analysisKb);});
  $(target).querySelectorAll('[data-analysis-ticket]').forEach(b=>b.onclick=()=>{location.hash='tickets';route();showTicket(b.dataset.analysisTicket);});
  $(target).querySelectorAll('[data-review]').forEach(b=>b.onclick=()=>{reviews.set(key,b.dataset.review);renderAnalysis(target,a,key,q);});
+}
+function setupTriageGuidance(){
+ const form=$('triage-form'),guide=document.createElement('section');guide.className='triage-guidance';
+ guide.innerHTML='<span class="section-kicker">How this demo handles a report</span><div><span>1</span><p><b>Interpret</b> the description and selected system.</p></div><div><span>2</span><p><b>Match</b> procedures and resolved historical cases.</p></div><div><span>3</span><p><b>Escalate or request evidence</b> when the signals are weak or impact is critical.</p></div>';
+ form.after(guide);
 }
 function renderModelResults(){
  const pct=n=>(n*100).toFixed(1)+'%';
