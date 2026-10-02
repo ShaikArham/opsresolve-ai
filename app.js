@@ -203,6 +203,13 @@ function setupAccessibility(){
  const update=()=>back.classList.toggle('visible',window.scrollY>500);window.addEventListener('scroll',update,{passive:true});update();
  back.onclick=()=>window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
 }
+function setupBrand(){
+ const brandMark=document.querySelector('.brand i');
+ brandMark.innerHTML='<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M16 22h14l8 10h10" fill="none" stroke="#63dfc3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="22" r="5" fill="#63dfc3"/><circle cx="30" cy="22" r="5" fill="#2d6fe2"/><circle cx="38" cy="32" r="5" fill="#63dfc3"/><path d="m43 42 5 5 10-12" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+ brandMark.setAttribute('aria-label','OpsResolve AI');
+ const favicon=document.querySelector('link[rel="icon"]');if(favicon)favicon.href='opsresolve-mark.svg';
+ const style=document.createElement('style');style.textContent='.brand i{background:#0b1f35!important;padding:4px}.brand i svg{width:100%;height:100%;display:block}';document.head.appendChild(style);
+}
 function setupTheme(){
  const root=document.documentElement,top=document.querySelector('.top'),title=$('page-title'),pill=top.querySelector('.pill');
  const eyebrow=document.createElement('span');eyebrow.className='eyebrow';eyebrow.textContent='Operations intelligence workspace';title.before(eyebrow);
@@ -213,7 +220,7 @@ function setupTheme(){
  toggle.onclick=()=>apply(root.dataset.theme==='dark'?'light':'dark');
  pill.before(actions);actions.append(toggle,pill);
 }
-addDashboardStyles();addAnalyticsStyles();addQueueStyles();addInvestigationStyles();addKnowledgeStyles();addTriageStyles();addStoryStyles();addPolishStyles();setupAccessibility();setupTheme();window.addEventListener('hashchange',route);init();
+addDashboardStyles();addAnalyticsStyles();addQueueStyles();addInvestigationStyles();addKnowledgeStyles();addTriageStyles();addStoryStyles();addPolishStyles();setupAccessibility();setupBrand();setupTheme();window.addEventListener('hashchange',route);init();
 
 function renderAnalysis(target,a,key,q){
  const accepted=a.action==='recommend',status=reviews.get(key)||a.review_status;
