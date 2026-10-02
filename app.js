@@ -61,6 +61,27 @@ function showArticle(id){
 }
 function count(rows,key){return rows.reduce((m,x)=>(m[x[key]]=(m[x[key]]||0)+1,m),{});}
 function chart(id,values){const max=Math.max(...Object.values(values));$(id).innerHTML=Object.entries(values).map(([k,n])=>'<div class="chart-row"><span>'+esc(k)+'</span><div class="bar" aria-hidden="true"><i style="width:'+n/max*100+'%"></i></div><b>'+n+'</b></div>').join('');}
+function renderOverview(){
+ const live=data.tickets.filter(active), resolved=data.tickets.filter(t=>t.resolved_at);
+ const onTrack=live.filter(t=>t.sla_status==='On Track').length, risk=live.filter(t=>t.sla_status==='At Risk').length, breached=live.filter(t=>t.sla_breached).length;
+ const critical=live.filter(t=>['P1','P2'].includes(t.priority)).length;
+ const resolvedWithin=resolved.filter(t=>!t.sla_breached).length;
+ const byCategory=count(live,'category'), maxCategory=Math.max(...Object.values(byCategory));
+ const attention=[...live].sort((a,b)=>b.sla_consumption_percent-a.sla_consumption_percent).slice(0,3);
+ const pct=(n,d)=>d?Math.round(n/d*100):0;
+ $('overview-insights').innerHTML='<div class="overview-grid">'+
+ '<section class="card pulse-card"><div class="section-kicker">Operations pulse</div><h2>Today’s support position</h2><p class="sub">A quick read of the current fictional support queue.</p><div class="pulse-metrics">'+
+ '<div><span class="pulse-value '+(risk+breached?'attention':'')+'">'+(risk+breached)+'</span><small>Active SLA exposure</small><em>'+pct(risk+breached,live.length)+'% of active queue</em></div>'+
+ '<div><span class="pulse-value">'+critical+'</span><small>P1 / P2 incidents</small><em>Needs senior attention</em></div>'+
+ '<div><span class="pulse-value positive">'+pct(onTrack,live.length)+'%</span><small>Active work on track</small><em>'+onTrack+' of '+live.length+' incidents</em></div></div></section>'+
+ '<section class="card health-card"><div class="section-kicker">SLA health</div><h2>Resolution performance</h2><p class="sub">Snapshot-based status for active work and recorded outcomes.</p><div class="health-row"><span>On track</span><div class="health-track"><i style="width:'+pct(onTrack,live.length)+'%"></i></div><b>'+onTrack+'</b></div>'+
+ '<div class="health-row warn"><span>At risk</span><div class="health-track"><i style="width:'+pct(risk,live.length)+'%"></i></div><b>'+risk+'</b></div>'+
+ '<div class="health-row breach"><span>Breached</span><div class="health-track"><i style="width:'+pct(breached,live.length)+'%"></i></div><b>'+breached+'</b></div>'+
+ '<div class="health-footer"><b>'+pct(resolvedWithin,resolved.length)+'%</b><span>of resolved incidents met the recorded resolution SLA</span></div></section>'+
+ '<section class="card mix-card"><div class="section-kicker">Live workload</div><h2>Active incidents by category</h2><div class="mini-bars">'+Object.entries(byCategory).sort((a,b)=>b[1]-a[1]).map(([category,n])=>'<div><span>'+esc(category)+'</span><div><i style="width:'+n/maxCategory*100+'%"></i></div><b>'+n+'</b></div>').join('')+'</div></section>'+
+ '<section class="card attention-card"><div class="section-kicker">Needs attention</div><h2>Highest SLA consumption</h2><div class="attention-list">'+attention.map(t=>'<button class="attention-item" data-overview-ticket="'+esc(t.ticket_id)+'"><span>'+tag(t.priority,['P1','P2'].includes(t.priority)?'high':'medium')+'</span><span><b>'+esc(t.ticket_id)+'</b><small>'+esc(t.title.split(' · ')[0])+'</small></span><strong>'+esc(t.sla_consumption_percent)+'%</strong></button>').join('')+'</div></section></div>';
+ $('overview-insights').querySelectorAll('[data-overview-ticket]').forEach(b=>b.onclick=()=>showTicket(b.dataset.overviewTicket));
+}
 function insights(){
  chart('category-chart',count(data.tickets,'category'));chart('sla-chart',count(data.tickets,'sla_status'));
  const groups=new Map();
@@ -76,7 +97,7 @@ function insights(){
 function reset(){patternIds=null;['search','status','category','priority','sla'].forEach(id=>$(id).value='');$('sort').value='created';page=0;draw();}
 function route(){
  if(!data)return;const view=location.hash.slice(1)||'dashboard';const queue=['dashboard','tickets'].includes(view);
- $('queue-view').hidden=!queue;$('stats').hidden=view!=='dashboard';
+ $('queue-view').hidden=!queue;$('stats').hidden=view!=='dashboard';$('overview-insights').hidden=view!=='dashboard';
  ['insights','knowledge','triage','about'].forEach(v=>$(v+'-view').hidden=v!==view);
  if(!['dashboard','tickets','insights','knowledge','triage','about'].includes(view)){location.hash='dashboard';return;}
  $('page-title').textContent={dashboard:'Support overview',tickets:'Incident queue',insights:'Recurring issues',knowledge:'Knowledge base',triage:'Triage lab',about:'About this demo'}[view];
@@ -93,7 +114,7 @@ async function init(){
   const median=(hours[Math.floor((hours.length-1)/2)]+hours[Math.floor(hours.length/2)])/2;
   const risk=live.filter(t=>t.sla_status==='At Risk').length,breach=live.filter(t=>t.sla_breached).length;
   const stats=[['Total incidents',data.tickets.length,'All six support categories'],['Active incidents',live.length,live.filter(t=>t.status==='Pending').length+' pending evidence'],['Active SLA risk',risk+' / '+breach,'At risk / breached'],['Median resolution',median.toFixed(1)+'h',resolved.length+' resolved incidents']];
-  $('stats').innerHTML=stats.map(([label,value,caption])=>'<div class="stat"><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong><em>'+esc(caption)+'</em></div>').join('');
+  $('stats').innerHTML=stats.map(([label,value,caption])=>'<div class="stat"><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong><em>'+esc(caption)+'</em></div>').join('');renderOverview();
   const categories=[...new Set(data.tickets.map(t=>t.category))].sort();for(const id of ['category','kb-category'])for(const c of categories){const o=document.createElement('option');o.value=c;o.textContent=c;$(id).appendChild(o);}
   ['search','status','category','priority','sla','sort'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',()=>{page=0;draw();}));
   $('prev').onclick=()=>{page--;draw();};$('next').onclick=()=>{page++;draw();};$('reset').onclick=reset;
@@ -103,6 +124,10 @@ async function init(){
   renderModelResults();
   draw();drawKnowledge();insights();route();$('loading').hidden=true;$('workspace').hidden=false;
  }catch(e){$('loading').hidden=true;$('error').hidden=false;$('error').textContent='The support dataset could not be loaded. Reload the page to try again.';}
+}
+function addDashboardStyles(){
+ const style=document.createElement('style');style.textContent=`
+ .overview-insights{margin:0 0 22px}.overview-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:18px}.overview-grid .card{min-height:250px}.section-kicker{color:var(--blue);font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;margin-bottom:9px}.pulse-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:22px}.pulse-metrics>div{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--card)}.pulse-value{display:block;font-size:27px;font-weight:800;line-height:1;color:var(--ink);margin-bottom:7px}.pulse-value.attention{color:var(--red)}.pulse-value.positive{color:var(--teal)}.pulse-metrics small{display:block;font-size:12px;font-weight:800;color:var(--ink)}.pulse-metrics em{display:block;margin-top:5px;color:var(--muted);font-size:12px;font-style:normal}.health-row{display:grid;grid-template-columns:80px 1fr 28px;gap:10px;align-items:center;margin:16px 0;font-size:13px}.health-track{height:9px;overflow:hidden;border-radius:99px;background:#e8eff4}.health-track i{display:block;height:100%;border-radius:inherit;background:var(--teal)}.health-row.warn .health-track i{background:var(--amber)}.health-row.breach .health-track i{background:var(--red)}.health-footer{display:flex;gap:10px;align-items:center;margin-top:24px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}.health-footer b{font-size:22px;color:var(--teal)}.mini-bars{margin-top:20px}.mini-bars>div{display:grid;grid-template-columns:90px 1fr 24px;gap:10px;align-items:center;margin:12px 0;font-size:13px}.mini-bars>div>div{height:9px;background:#e8eff4;border-radius:99px;overflow:hidden}.mini-bars i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--blue),var(--teal))}.attention-list{display:grid;gap:8px;margin-top:18px}.attention-item{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--card);color:var(--ink)}.attention-item:hover{border-color:var(--teal);background:var(--soft-teal)}.attention-item b,.attention-item small{display:block}.attention-item small{font-size:12px;color:var(--muted);margin-top:2px}.attention-item strong{color:var(--red);font-size:13px}@media(max-width:1100px){.overview-grid{grid-template-columns:1fr 1fr}.pulse-metrics{grid-template-columns:1fr}.overview-grid .card{min-height:0}}@media(max-width:650px){.overview-grid{grid-template-columns:1fr}.pulse-metrics{grid-template-columns:repeat(3,1fr)}.pulse-metrics>div{padding:11px}.pulse-value{font-size:23px}.pulse-metrics small,.pulse-metrics em{font-size:11px}}html[data-theme="dark"] .pulse-metrics>div,html[data-theme="dark"] .attention-item{background:#10253c}html[data-theme="dark"] .health-track,html[data-theme="dark"] .mini-bars>div>div{background:#263f57}`;document.head.appendChild(style);
 }
 function setupTheme(){
  const root=document.documentElement,top=document.querySelector('.top'),title=$('page-title'),pill=top.querySelector('.pill');
@@ -114,7 +139,7 @@ function setupTheme(){
  toggle.onclick=()=>apply(root.dataset.theme==='dark'?'light':'dark');
  pill.before(actions);actions.append(toggle,pill);
 }
-setupTheme();window.addEventListener('hashchange',route);init();
+addDashboardStyles();setupTheme();window.addEventListener('hashchange',route);init();
 
 function renderAnalysis(target,a,key,q){
  const accepted=a.action==='recommend',status=reviews.get(key)||a.review_status;
